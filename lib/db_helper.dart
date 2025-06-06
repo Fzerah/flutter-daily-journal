@@ -1,5 +1,6 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
+import 'package:intl/intl.dart';
 
 class DBHelper {
   static final DBHelper instance = DBHelper._init();
@@ -16,7 +17,11 @@ class DBHelper {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, fileName);
 
-    return await openDatabase(path, version: 1, onCreate: _createDB);
+    return await openDatabase(
+      path,
+      version: 1,
+      onCreate: _createDB,
+    );
   }
 
   Future<void> _createDB(Database db, int version) async {
@@ -24,14 +29,21 @@ class DBHelper {
       CREATE TABLE entries (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT,
-        content TEXT
+        content TEXT,
+        date TEXT
       )
     ''');
   }
 
   Future<int> insertEntry(String title, String content) async {
     final db = await instance.database;
-    return await db.insert('entries', {'title': title, 'content': content});
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+
+    return await db.insert('entries', {
+      'title': title,
+      'content': content,
+      'date': today,
+    });
   }
 
   Future<List<Map<String, dynamic>>> getEntries() async {
