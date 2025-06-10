@@ -1,164 +1,242 @@
 import 'package:flutter/material.dart';
-import 'db_helper.dart';
-import 'add_entry_page.dart';
 import 'package:intl/intl.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(DailyJournalApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
-
+class DailyJournalApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Daily Journal',
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        scaffoldBackgroundColor: const Color(0xFFFDF6F0), // pastel açık ton
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFFBFD8B8), // pastel yeşil
-          elevation: 0,
-        ),
-        floatingActionButtonTheme: const FloatingActionButtonThemeData(
-          backgroundColor: Color(0xFFBFD8B8),
-        ),
-      ),
-      home: const HomePage(),
+      home: DailyJournalPage(),
+      debugShowCheckedModeBanner: false,
     );
   }
 }
 
-class HomePage extends StatefulWidget {
-  const HomePage({super.key});
-
+class DailyJournalPage extends StatefulWidget {
   @override
-  State<HomePage> createState() => _HomePageState();
+  _DailyJournalPageState createState() => _DailyJournalPageState();
 }
 
-class _HomePageState extends State<HomePage> {
-  final PageController _pageController = PageController(initialPage: 0);
-  final int _daysToShow = 30;
-  DateTime _startDate = DateTime.now();
+class _DailyJournalPageState extends State<DailyJournalPage> {
+  List<String> tasks = [];
 
-  Map<String, List<Map<String, dynamic>>> _entriesByDate = {};
+  Future<void> _addTaskDialog(BuildContext context) async {
+    // Tarih seçimi
+    DateTime? selectedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
 
-  @override
-  void initState() {
-    super.initState();
-    _loadAllEntries();
-  }
+    if (selectedDate == null) return; // Tarih seçilmediyse çık
 
-  Future<void> _loadAllEntries() async {
-    final allEntries = await DBHelper.instance.getEntries();
-    Map<String, List<Map<String, dynamic>>> grouped = {};
+    // Saat seçimi
+    TimeOfDay? selectedTime = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay(hour: 8, minute: 0),
+    );
 
-    for (var entry in allEntries) {
-      String dateKey;
-      if (entry['date'] != null && entry['date'] is String && (entry['date'] as String).isNotEmpty) {
-        dateKey = entry['date'];
-      } else if (entry['created_at'] != null) {
-        dateKey = DateFormat('yyyy-MM-dd').format(DateTime.parse(entry['created_at']));
-      } else {
-        dateKey = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      }
+    if (selectedTime == null) return; // Saat seçilmediyse çık
 
-      grouped.putIfAbsent(dateKey, () => []);
-      grouped[dateKey]!.add(entry);
-    }
+    String taskText = '';
+    bool isValid = false;
+
+    // Görev açıklaması için dialog
+    await showDialog(
+      context: context,
+      barrierDismissible: false, // dış tıklamayla kapanmayı engelle
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('New Task'),
+              content: TextField(
+                autofocus: true,
+                decoration: const InputDecoration(hintText: 'Task description'),
+                onChanged: (value) {
+                  setState(() {
+                    taskText = value;
+                    isValid = taskText.trim().isNotEmpty;
+                  });
+                },
+              ),
+              actions: [
+                TextButton(
+                  child: const Text('Cancel'),
+                  onPressed: () => Navigator.of(context).pop(),
+                ),
+                TextButton(
+                  child: const Text('Add'),
+                  onPressed: isValid
+                      ? () {
+                          Navigator.of(context).pop();
+                        }
+                      : null, // açıklama yoksa devre dışı
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (taskText.trim().isEmpty) return; // boşsa çık
+
+    // Tarih ve saati birleştir
+    final combinedDateTime = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      selectedTime.hour,
+      selectedTime.minute,
+    );
+
+    // Formatla (Türkçe ay isimleri için tr_TR kullandım)
+    final formattedDate = DateFormat('d MMMM', 'tr_TR').format(combinedDateTime);
+    final formattedTime = DateFormat('HH:mm').format(combinedDateTime);
+
+    final newTask = '$formattedDate $formattedTime - $taskText';
 
     setState(() {
-      _entriesByDate = grouped;
+      tasks.add(newTask);
     });
-  }
-
-  Future<void> _deleteEntry(int id) async {
-    await DBHelper.instance.deleteEntry(id);
-    await _loadAllEntries();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Daily Journal'),
-        centerTitle: true,
-      ),
-      body: PageView.builder(
-        controller: _pageController,
-        itemCount: _daysToShow,
-        itemBuilder: (context, index) {
-          final date = _startDate.subtract(Duration(days: -index));
-          final dateKey = DateFormat('yyyy-MM-dd').format(date);
-          final entries = _entriesByDate[dateKey] ?? [];
+      backgroundColor: Colors.pink[100],
+      body: SafeArea(
+        left: true,
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            children: [
+              // Üst başlık ve tarih
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Journal',
+                    style: TextStyle(fontSize: 30, fontFamily: 'Cursive'),
+                  ),
+                  Text('11 HAZ', style: TextStyle(fontSize: 16)),
+                ],
+              ),
+              SizedBox(height: 20),
 
-          return Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              children: [
-                Text(
-                  DateFormat('EEEE, MMMM d, yyyy').format(date),
-                  style: const TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF6B705C),
+              // "How was your day?"
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text("How was your day?"),
+              ),
+              SizedBox(height: 16),
+
+              // Örnek günlük giriş
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                ),
+                child: Row(
+                  children: [
+                    Column(
+                      children: [
+                        Text('Mon Jun', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text('10', style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'hfushhfejahvndv\nnsugaggjf<ngbzb\ngzurhgzurzgjijw\nfjfwvnbnbn',
+                        style: TextStyle(fontSize: 12),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: 16),
+
+              // Görev ekleme bölümü (buton)
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Add new task',
+                        style: TextStyle(fontSize: 18),
+                      ),
+                    ),
+                    ElevatedButton(
+                      onPressed: () => _addTaskDialog(context),
+                      style: ElevatedButton.styleFrom(
+                        shape: CircleBorder(),
+                        padding: EdgeInsets.all(12),
+                      ),
+                      child: Icon(Icons.add),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: 16),
+
+              // To-Do List
+              Expanded(
+                child: Container(
+                  padding: EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('To-Do List', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      SizedBox(height: 8),
+                      Expanded(
+                        child: tasks.isEmpty
+                            ? Center(child: Text('No tasks yet'))
+                            : ListView.builder(
+                                itemCount: tasks.length,
+                                itemBuilder: (context, index) {
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(vertical: 4),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.circle, size: 8),
+                                        SizedBox(width: 8),
+                                        Expanded(child: Text(tasks[index])),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: entries.isEmpty
-                      ? Center(
-                          child: Text(
-                            'No entries for this day.',
-                            style: TextStyle(color: Colors.grey[600]),
-                          ),
-                        )
-                      : ListView.builder(
-                          itemCount: entries.length,
-                          itemBuilder: (context, i) {
-                            final entry = entries[i];
-                            return Card(
-                              color: const Color(0xFFE0E2DB), // pastel gri
-                              margin: const EdgeInsets.symmetric(vertical: 8),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: ListTile(
-                                title: Text(
-                                  entry['title'],
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF3D405B),
-                                  ),
-                                ),
-                                subtitle: Text(
-                                  entry['content'],
-                                  style: const TextStyle(color: Color(0xFF3D405B)),
-                                ),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.delete, color: Colors.redAccent),
-                                  onPressed: () => _deleteEntry(entry['id']),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => AddEntryPage()),
-          );
-          _loadAllEntries();
-        },
-        child: const Icon(Icons.add),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
